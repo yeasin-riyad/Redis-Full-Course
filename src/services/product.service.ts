@@ -24,6 +24,10 @@ const PRODUCTS_ALL_CACHE_KEY = "products:all";
 
 const PRODUCTS_CACHE_TTL_SECONDS = 60;
 
+function getProductCacheKey(productId: number): string {
+  return `products:id:${productId}`;
+}
+
 export async function fetchAllProductsFromDatabase(filters: {
   category?: string;
   search?: string;
@@ -85,10 +89,12 @@ export async function getAllProducts(filters: {
   return products;
 }
 
-export async function getProductById(id: number): Promise<Product | null> {
+export async function fetchSingleProductFromDatabase(
+  id: number,
+): Promise<Product | null> {
   const result = await pool.query<ProductRow>(
     "SELECT * FROM products WHERE id = $1",
-    [id]
+    [id],
   );
 
   if (result.rows.length === 0) {
@@ -96,6 +102,34 @@ export async function getProductById(id: number): Promise<Product | null> {
   }
 
   return mapProductRow(result.rows[0]);
+}
+
+export async function getProductById(id: number): Promise<Product | null> {
+  const cacheKey = getProductCacheKey(id);
+
+  const cachedProduct = await redisClient.get(cacheKey);
+
+  if (cachedProduct) {
+    console.log("cache hit", cacheKey);
+
+    return JSON.parse(cachedProduct) as Product;
+  }
+
+  console.log("cache miss", cacheKey);
+  const product = await fetchSingleProductFromDatabase(id);
+
+  if (!product) {
+    return null;
+  }
+
+  await redisClient.setEx(
+    cacheKey,
+    PRODUCTS_CACHE_TTL_SECONDS,
+    JSON.stringify(product),
+  );
+  console.log("cache set", cacheKey);
+
+  return product;
 }
 
 export async function createProduct(
