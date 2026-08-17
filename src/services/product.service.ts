@@ -132,17 +132,26 @@ export async function getProductById(id: number): Promise<Product | null> {
   return product;
 }
 
+async function deleteProductsAllCache(): Promise<void> {
+  await redisClient.del(PRODUCTS_ALL_CACHE_KEY);
+  console.log("cache delete: products:all");
+}
+
 export async function createProduct(
-  input: CreateProductInput
+  input: CreateProductInput,
 ): Promise<Product> {
   const result = await pool.query<ProductRow>(
     `INSERT INTO products (name, description, price, category, stock)
      VALUES ($1, $2, $3, $4, $5)
      RETURNING *`,
-    [input.name, input.description, input.price, input.category, input.stock]
+    [input.name, input.description, input.price, input.category, input.stock],
   );
 
-  return mapProductRow(result.rows[0]);
+  const newlyCreatedProduct = mapProductRow(result.rows[0]);
+
+  await deleteProductsAllCache();
+
+  return newlyCreatedProduct;
 }
 
 export async function updateProduct(
