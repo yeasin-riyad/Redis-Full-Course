@@ -154,11 +154,19 @@ export async function createProduct(
   return newlyCreatedProduct;
 }
 
+
+async function deleteSingleProductCache(productId: number): Promise<void> {
+  const cacheKey = getProductCacheKey(productId);
+
+  await redisClient.del(cacheKey);
+  console.log("cache delete", cacheKey);
+}
+
 export async function updateProduct(
   id: number,
-  input: UpdateProductInput
+  input: UpdateProductInput,
 ): Promise<Product | null> {
-  const existing = await getProductById(id);
+  const existing = await fetchSingleProductFromDatabase(id);
   if (!existing) {
     return null;
   }
@@ -179,8 +187,13 @@ export async function updateProduct(
          updated_at = CURRENT_TIMESTAMP
      WHERE id = $6
      RETURNING *`,
-    [name, description, price, category, stock, id]
+    [name, description, price, category, stock, id],
   );
 
-  return mapProductRow(result.rows[0]);
+  const product = mapProductRow(result.rows[0]);
+
+  await deleteProductsAllCache();
+  await deleteSingleProductCache(id);
+
+  return product;
 }
